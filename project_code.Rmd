@@ -1,0 +1,319 @@
+---
+  title: "Final Project - STAT 429"
+author: "Name: Theodoros Mamalis, NetID: mamalis2"
+date: 'Due: 12/5/2022 11:59pm'
+output: pdf_document
+---
+  
+  ```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+
+## Abstract
+
+This project concerns the Wisconsin CO2 dataset. It focuses on the monthly CO2 emissions of Wisconsin, and analyzes it using time-series analysis techniques. The methods that were uses were ARIMA Fitting (section Analysis B) and Spectral Analysis (secion Analysis C), to fit and verify the models. Two SARIMA models are proposed and the best is chosen according to its diagnostic plots and significance of estimated parameters. Moreover, in section Analysis B, the next five future CO2 emission values are predicted using the best model. The findings are that an ARIMA model with seasonality of 12 months describe the model well. This is expected as CO2 emissions depend on variables that repeat themselves biyearly, e.g., industrial emission patterns, traffic patterns, or household CO2 emission patterns.
+
+
+```{r, fig.align = 'center',out.width="69%", warning=FALSE, include=FALSE}
+# knitr::opts_chunk$set(echo = TRUE)
+
+library(TSA)
+library(tidyverse)
+library(tidyr)
+library(dplyr)
+library(readxl)
+library(xts)
+library(astsa)
+library(fpp2)
+library(tseries)
+library(MASS)
+```
+
+
+## Introduction
+
+The data concerns Carbon dioxide (CO2) in ambient and standard air samples. These samples were collected inside glass flasks. The location where the samples were taken is in Park Fall, Wisconsin, USA. The data was collected at various days within 1994-2021. The sampling interval was approximately weekly for fixed sites, which is the case for this dataset. The dataset contains a handful of parameters including the datetime the sample was collected, the value of CO2 in the sample in micromol/mol (parts per million (ppm) or 10-6 mol CO2 per mol of dry air), uncertainties of measurements, location and height where the sample was taken, whether a sample was rejected after the collection process or not.This dataset was downloaded from https://www.esrl.noaa.gov/gmd/dv/data/ , from the “Greenhouse Gases” category. In specific, the dataset used in this project can be found in this link. This dataset will be analyzed using time-series analysis methods in section Analysis B, and among two proposed ARIMA model, the best will be chosen. This model will be used to predict the CO2 emission values for Wisconsin for the future five points, i.e., for the next five months. Lastly, spectral analysis methods will be used in section Analysis C to analyze the dataset, and also verify the results of part B.
+
+
+
+## Statistical Methods
+
+The methods that will be used will be time-series analysis methods and spectral analysis methods. The former concerns analyzing time-series such as the Wisconsin dataset, and this analysis will be made in section Analysis B that follows. The analysis includes splitting the data into train and testing datasets, and using the train dataset to fit two models. Then, the performance of these models will be used on the test dataset. The best of these models will be used to predict the CO2 emissions for the five time points, that is, for the next five months. 
+
+Moreover, after plotting the time-series in question, there seems to be seasonality existing in the CO2 emissions versus month as the timescale. For this reason, in section Analysis C, Spectral Analysis will be used, which is suited for finding underlying periodicity patterns.
+
+
+### Analysis B
+
+
+
+**a)** This section will address the question of fitting an appropriate SARIMA model to the CO2 concentration, using month as the timescale, on training data, and checking its accuracy on testing data. 
+
+<!-- The seasonal time series data is: -->
+  ```{r, fig.align = 'center',out.width="69%", warning=FALSE, results='hide', message=FALSE}
+data_2 = read_delim("winsc_co2_data.txt",delim = " ")
+```
+
+<!-- This section will address the question of fitting an appropriate SARIMA model to the CO2 concentration, using month as the timescale, on training data, and checking its accuracy on testing data.  -->
+  <!-- Therefore, the relevant data is extracted from the dataset: -->
+  ```{r, fig.align = 'center',out.width="69%", warning=FALSE, }
+data_2$year_month <- paste0(data_2$year,":",data_2$month)
+
+dataa  = data_2 %>% group_by(year_month) %>%
+  summarise(across(value, mean)) %>% slice(-1)
+```
+
+```{r, fig.align = 'center',out.width="69%", warning=FALSE, }
+data.ts = as.ts(dataa[2])
+```
+
+The time series plot of the concentration of CO2 is:
+  ```{r, fig.align = 'center',out.width="69%", warning=FALSE, }
+ts.plot(data.ts, ylab="CO2 concentration", main="CO2 concentration from December 1994 to December 2021")
+```
+There is a clear increasing trend in the data. The variance is not increasing but it is mostly the same. A clear periodical (seasonal) pattern can be observed. The data is not stationary since there is an increasing trend. Two to three large spikes can be observed in the data, however, since the rest of the data look ok, these three points are not expected to affect the analysis and therefore, they will be kept.
+
+
+
+**b)** Then the dataset is split into a 80/20 train-test split:
+  ```{r, fig.align = 'center',out.width="69%", warning=FALSE, }
+total.length=length(data.ts)
+test.length=0.2 * total.length
+train.length=total.length-test.length
+data.ts.test=subset(data.ts,start=train.length)
+data.ts.train=subset(data.ts,end=train.length-1)
+```
+
+
+
+*At this point the dataset is split into a 80/20 train-test split. The train dataset will be used from now and until part d) of this section, where the dataset will be used to test the performance of the two models. Section Analysis C is not concerned with a train-test split but uses the original data for conducting the analysis.*
+  
+  Next, it will be checked whether a boxcox transformation is need:
+  ```{r, fig.align = 'center',out.width="69%", warning=FALSE, }
+(lambda <- BoxCox.lambda(data.ts.train))
+```
+It seems that a transformation could prove useful. The resulting time series is:
+  ```{r, fig.align = 'center',out.width="69%", warning=FALSE, }
+autoplot(BoxCox(data.ts.train,lambda))
+```
+
+The plot looks similar to the original plot, however, the y-axis values are smaller.
+
+The transformed data is:
+  ```{r, fig.align = 'center',out.width="69%", warning=FALSE, }
+transf.data.train = (data.ts.train^(-0.8049131)-1)/(-0.8049131)
+transf.data.test = (data.ts.test^(-0.8049131)-1)/(-0.8049131)
+```
+
+A test for differencing is made:
+  ```{r, fig.align = 'center',out.width="69%", warning=FALSE, }
+kpss.test(transf.data.train)
+```
+
+The test suggests differencing. This was to be expected from the time series depicted in the earlier plot. By differencing, the data does not seem stationary since the variance is not constant enough at each time point:
+  ```{r, fig.align = 'center',out.width="69%", warning=FALSE,  }
+tsplot(diff(transf.data.train), ylab = "Trend-Differenced Data")
+```
+
+By seasonal differencing with $s=12$ the residuals seems to be more constant, and the mean seems close to zero:
+  ```{r, fig.align = 'center',out.width="69%", }
+tsplot(diff(diff(transf.data.train,2),12),ylab = "Seasonal- and Trend-Differenced Data")
+```
+Therefore, the result looks mostly like a white noise except the 6 spikes that occured, because of the spikes in the original dataset.
+
+**C.i)** The ACF and PACF plots are:
+  ```{r, fig.align = 'center',out.width="69%", results='hide'}
+acf2(diff(diff(transf.data.train,2),12), 
+     main = "ACF/PACF Plot for Seasonal- and Trend-Differenced Data")
+```
+
+Therefore, concerning the seasonal part: The ACF is cutting of after 12 lags, and the PACF is tailing off. Therefore, $Q=12$ and $P=0$. Then, concerning the nonseasonal: The ACF cuts off after 1 tick and the PACF tails off. Therefore $p=0$ and $q=1$.
+
+Therefore, the model is ARIMA(0,2,1)x(0,1,12)(12), where $d=1, D=1$ because of the two-times differencing and one-time seasonal-differencing, respectively.
+
+The diagnostic plots are:
+  ```{r, details=FALSE,  fig.align = 'center',out.width="69%", warning=FALSE, }
+sarima(data.ts.train,p=0,d=2,q=1,P=0,D=1,Q=12,S=12, details = FALSE)
+```
+```{r, results='hide',  fig.align = 'center',out.width="69%", warning=FALSE, }
+sarima(data.ts.train,p=0,d=2,q=1,P=0,D=1,Q=12,S=12 )
+```
+
+The ACF residual plot has 95 percent of the spikes within the blue band. But, the data points are not tightly gathered around the blue line. Finally, all p-values are below 0.05 in the Ljung-Box statistic plot. Therefore, this model is not a good model as far as diagnostics are concerned. 
+
+
+
+However, a good diagnostic-wise will be needed, so that significance of the parameters can be gauged Therefore, a similar model to the previous one is fit, but with $q=2$ instead of $q=1$. The diagnostics for the model ARIMA(0,2,2)x(0,1,12)(12) are:
+  ```{r, details=FALSE,  fig.align = 'center',out.width="69%", warning=FALSE, }
+sarima(data.ts.train,p=0,d=2,q=2,P=0,D=1,Q=12,S=12, details = FALSE)
+```
+```{r, results='hide',  fig.align = 'center',out.width="69%", warning=FALSE, }
+sarima(data.ts.train,p=0,d=2,q=2,P=0,D=1,Q=12,S=12 )
+```
+
+
+The ACF residual plot has all spikes within the blue band. Moreover, the data points are tightly gathered around the blue line in the QQ plot except a few, which are the points that represents large spikes in the time series plot presented in the beginning. Finally, all but one p-values are over 0.05 in the Ljung-Box statistic plot. Therefore, this model is a good model as far as diagnostics are concerned. 
+
+
+
+However, most variables are not significant. After trial and error, the ARIMA(0,2,2)x(0,1,1)(12) model below was found to have all variables to be significant:
+  ```{r, details=FALSE,  fig.align = 'center',out.width="69%", warning=FALSE, }
+sarima(data.ts.train,p=0,d=2,q=2,P=0,D=1,Q=1,S=12, details = FALSE)
+```
+```{r, results='hide',  fig.align = 'center',out.width="69%", warning=FALSE, }
+sarima(data.ts.train,p=0,d=2,q=2,P=0,D=1,Q=1,S=12 )
+```
+
+The ACF residual plot has all spikes within the blue band. Moreover, the data points are tightly gathered around the blue line in the QQ plot except 3, which are the points that represents the spikes in the data. Finally, all but p-values are over 0.05 in the Ljung-Box statistic plot. Therefore, this model is a good model as far as diagnostics are concerned.
+
+
+
+
+**c.ii)** A different model will be presented below for $d=1$.
+
+The ACF and PACF plots are:
+  ```{r, fig.align = 'center',out.width="69%", results='hide'}
+acf2(diff(diff(transf.data.train,1),12), 
+     main = "ACF/PACF Plot for Seasonal- and Trend-Differenced Data")
+```
+
+They are similar to the **c. i)** therefore the parameters are the same with the difference that in this case $d=1$.
+
+
+The model diagnostics are:
+  ```{r, details=FALSE,  fig.align = 'center',out.width="69%", warning=FALSE, }
+sarima(data.ts.train,p=0,d=1,q=1,P=0,D=1,Q=12,S=12, details = FALSE)
+```
+```{r, results='hide',  fig.align = 'center',out.width="69%", warning=FALSE, }
+sarima(data.ts.train,p=0,d=1,q=1,P=0,D=1,Q=12,S=12 )
+```
+
+The ACF residual plot has all spikes within the blue band. Moreover, the data points are mostly tightly gathered around the blue line in the QQ plot except a few, which are the points that represents the spikes in the data. Finally, all but p-values are over 0.05 in the Ljung-Box statistic plot. Therefore, this model is a good model as far as diagnostics are concerned.
+
+
+
+
+However, most variables are not significant. After trial and error, the ARIMA(0,1,1)x(0,1,1)(12) model below was found to have all variables to be significant. The model diagnostics are:
+  ```{r, details=FALSE,  fig.align = 'center',out.width="69%", warning=FALSE, }
+sarima(data.ts.train,p=0,d=1,q=1,P=0,D=1,Q=1,S=12, details = FALSE)
+```
+```{r, results='hide',  fig.align = 'center',out.width="69%", warning=FALSE, }
+sarima(data.ts.train,p=0,d=1,q=1,P=0,D=1,Q=1,S=12)
+```
+
+The ACF residual plot has all spikes within the blue band. Moreover, the data points are tightly gathered around the blue line in the QQ plot except a few, which are the points that represents the spikes in the data. Finally, all but p-values are over 0.05 in the Ljung-Box statistic plot. Therefore, this model is a good model as far as diagnostics are concerned.
+
+
+
+**d)** The forecasts of the models are:
+  ```{r, fig.align = 'center',out.width="65%"}
+CO2_emissons=data.ts.train
+model11.forecast=sarima.for(CO2_emissons,p=0,d=2,q=2,P=0,D=1,Q=1,S=12,
+                            n.ahead = length(data.ts.test), main="CO2-emission Prediction on Test Data ARIMA(0,2,2)x(0,1,1)(12)")
+accuracy(object=model11.forecast$pred,x=data.ts.test)
+```
+
+
+
+```{r, fig.align = 'center',out.width="65%"}
+CO2_emissons=data.ts.train
+model12.forecast=sarima.for(CO2_emissons,p=0,d=1,q=1,P=0,D=1,Q=1,S=12,
+                            n.ahead = length(data.ts.test), main="CO2-emission Prediction on Test Data for ARIMA(0,1,1)x(0,1,1)(12)")
+accuracy(object=model12.forecast$pred,x=data.ts.test)
+```
+
+According to all forecasting metrics, the ARIMA(1,2,1)x(0,1,1)(12) model is better than the ARIMA(1,1,1)x(0,1,1)(12). Therefore, the former model is chosen as the best model among the two.
+
+<!-- is the best model among the two. -->
+  
+  **e)** The forecast of the future 5 values according to the best ARIMA(1,2,1)x(0,1,1)(12) model is:
+  ```{r,  fig.align = 'center',out.width="65%", warning=FALSE, }
+CO2_emissons=data.ts
+sarima.for(CO2_emissons,p=0,d=2,q=2,P=0,D=1,Q=1,S=12,n.ahead =5,main="CO2-emission five-month forecast")
+```
+
+
+
+
+### Analysis C
+
+**a) Literature review**
+  
+  Historically, spectral analysis has been coupled with time series analysis from as early as fifty years ago. For example, in Parzen (1967) the authors try to couple time series with spectral analysis, and discusses several foundational spectral-analysis concepts, such as the periodogram. The paper then uses those concepts to study an empirical time series. Then, a few decades later, it seems that spectral analysis, as well as time-series analysis, has not yet been incorporated by fields that, today, make heavy use of time-series analysis tools, such as Econometrics. For example, in Granger and Watson (1984), the authors are critical of econometricians that refuse to accept time-series analysis as a valid analysis tools for econometric time-series. In order to address any concerns related to the use of time-series analysis with economics data, the authors in Granger and Watson (1984) take advantage of the existence of periodicity in econometrics, and couple it with spectral analysis tools from the time-series analysis field, which can be used to analyzed periodic time-series. More attempts are made to couple spectral analysis with real-life questions in Gardner (1986). There, the concept of spectral correlation theory is discussed in the context of cyclostationary time-series. After the author introduces relevant notation, definitions and theorems, he goes on to list applications that may benefit from such a s theory. The applications include sampling and aliasing, frequency conversion, and noise in periodic circuits. Finally, spectral analysis continues to be a relevant topic, for example in Lepage and Thomson (2009), where the authors present a spectral analysis method to analyze cyclostationary time-series with applications on seismic data, in specific, recognizing the "hum" sound introduced by subtle seismic activity during the collection of various time-series data.
+
+<!-- Grady, J. S., Her, M., Moreno, G., Perez, C., & Yelinek, J. (2019). Emotions in storybooks: A comparison of storybooks that represent ethnic and racial groups in the United States. Psychology of Popular Media Culture, 8(3), 207–217. https://doi.org/10.1037/ppm0000185 -->
+  
+  [1] Parzen, E. (1967). The Role of Spectral Analysis in Time Series Analysis. *Review of the International Statistical Institute*. JSTOR. https://doi.org/10.2307/1401395.
+
+[2]  Granger, C.W.J.,  and Watson,  Mark W. (1984). Chapter 17 Time series and spectral methods in econometrics. *Handbook of Econometrics*, 979-1022. Elsevier. https://doi.org/10.1016/S1573-4412(84)02009-2.
+
+
+[3] Gardner, W A. (1986). The spectral correlation theory of cyclostationary time-series. *Signal Processing*, 13–36. https://doi.org/10.1016/0165-1684(86)90092-7
+
+
+[4] Lepage, K. Q.,  and D. J. Thomson. (2009). Spectral analysis of cyclostationary time-series: a robust method. *Geophysical Journal International*, 1199–1212. doi: 10.1111/j.1365-246X.2009.04339.x
+
+
+
+
+
+<!-- [1] E. Parzen. “The Role of Spectral Analysis in Time Series Analysis.” *Review of the International Statistical Institute*, vol. 35, 1967, JSTOR, https://doi.org/10.2307/1401395. -->
+  
+  <!-- [2] C.W.J. Granger, Mark W. Watson. “Chapter 17 Time series and spectral methods in econometrics.” *Handbook of Econometrics*, vol. 2, 1984, pp. 979-1022, Elsevier, https://doi.org/10.1016/S1573-4412(84)02009-2. -->
+  
+  
+  <!-- [3] W A Gardner. "The spectral correlation theory of cyclostationary time-series." *Signal Processing*, vol 11, 1986, pp. 13–36, https://doi.org/10.1016/0165-1684(86)90092-7 -->
+  
+  
+  <!-- [4] K. Q. Lepage and D. J. Thomson. *Geophysical Journal International*, vol. 179, 2009, pp. 1199–1212, doi: 10.1111/j.1365-246X.2009.04339.x -->
+  
+  
+  
+  **b)** The data in Part B) will be analyzed using Spectral Analysis:
+  
+  Firstly, the periodogram will be used to identify frequencies of interest:
+  <!-- after removing the three large spikes that can be seen at the time-series plot of Part B), since for analyzing frequencies, these spikes might be significant: -->
+  ```{r,  fig.align = 'center',out.width="69%", warning=FALSE, }
+# dx=data.ts[-c(22,89,178)]
+
+yy=periodogram(data.ts, main="Periodogram of Monthly CO2 emissions");
+abline(h=0);
+```
+The spikes in the periodogram (those with value greater than 5000) concern the frequencies:
+  ```{r,  fig.align = 'center',out.width="69%", warning=FALSE, }
+yy$freq[yy$spec>5000]
+```
+The frequencies around 0 are to be expected, since they express the increasing trend in the data. By removing these frequencies, the last significant frequency, when converted to timescale yields a period of:
+  ```{r,  fig.align = 'center',out.width="69%", warning=FALSE, }
+1/yy$freq[yy$spec>5000][-c(1,2,3)]
+```
+Therefore, there are repeating cycles every 12 months, that is, the cycle repeats yearly. This verifies the seasonal component of Part B) which was taken to be 12 based on the time series plots, and on the diagnostic results of the sarima() function. Moreover, this is to be expected since CO2 emissions depend on various functions of the industrial units, traffic patterns, and household CO2-emission patterns, in the state of Wisconsin, all of which more-or-less repeat themselves each year.
+
+Then, the spectral density of the data after performing once-trend- and seasonal-differencing is calculated:
+  ```{r,  fig.align = 'center',out.width="69%", warning=FALSE, }
+sp=TSA::spec(diff(diff(data.ts,1),12), main="Spectral density of Monthly CO2 emissions")
+```
+
+The spectral density seems to be increasing. This agrees with the ARMA(0,1,1)x(0,1,1)(12) which after once-trend- and seasonal-differencing can be though of as an MA(1) model with the first parameter being -0.9519 according to Part B), c.i. This can be seen below by using the arma.spec function for the aforementioned MA(1) parameter:
+  ```{r,  fig.align = 'center',out.width="65%", warning=FALSE, }
+arma.spec(ma=c(-0.9519), main="MA(1) from Part B, c.i", col=4)
+```
+
+
+<!-- The spectral density seems to be increasing. This agrees with the ARMA(0,2,1)x(0,1,2)(12) which after twice-trend- and seasonal-differencing can be though of as an MA(2) model with the first parameter being -1.9375 and the second 0.9376  according to Part B), c.i. This can be seen below by using the arma.spec function for the aforementioned MA(2) parameters: -->
+  <!-- ```{r} -->
+  <!-- # par(mfrow=c(3,1)) -->
+  <!-- arma.spec(ma=c(-1.9375,0.9376), main="MA(2) from Part B, c.i", col=4) -->
+  <!-- # arma.spec(ma=c(0.8), ma=0.5, main="ARMA(1,1)", col=4) -->
+  <!-- ``` -->
+  
+  
+  
+  ## Results and Discussion
+  
+  The Analysis B section picked the ARIMA(0,2,2)x(0,1,1)(12) model as the best model but the ARIMA(0,1,1)x(0,1,1)(12) was not far behind. Even though the former is better from a statistical point of view, the latter is perhaps closer to what someone would expect from looking at the time-series plot in Analysis B. This is because, there seems to be an increasing linear trend, which is made stationary by differencing once, that is, by using $d=1$. However, the plot could hide that the trend is in fact quadratic, hence the twice-trend-differenced model. The seasonality is 12 for both.
+  
+  The Analysis C section confirmed the existence of a trend with the existence of the 0 frequency in the periodogram. It also verified the existence of the 12-month seasonality of the CO2 emission time-series, with a strong frequency at 0.083333333, which significes a period of the inverse of the frequency, that is, a CO2-emission period of 12 months.
+  
+  
