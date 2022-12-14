@@ -16,10 +16,10 @@ In the Analysis B section the ARIMA(0,2,2)x(0,1,1)(12) model was picked as the b
 ARIMA(0,1,1)x(0,1,1)(12) was not far behind. Even though the former is better from a statistical point
 of view, the latter is perhaps closer to what someone would expect from looking at the time-series plot
 in Analysis B. This is because, there seems to be an increasing linear trend, which is made stationary by
-differencing once, that is, by using d = 1. However, the plot could hide that the trend is in fact quadratic,
+differencing once, that is, by trend differencing once. However, the plot could hide that the trend is in fact quadratic,
 hence the twice-trend-differenced model. The seasonality is 12 for both.
 
 The Analysis C section confirmed the existence of a trend with the existence of the 0 frequency in the
 periodogram. It also verified the existence of the 12-month seasonality of the CO2 emission time-series,
-with a strong frequency at 0.083333333, which significes a period of the inverse of the frequency, that is, a
+with a strong frequency at 0.083, which significes a period of the inverse of the frequency, that is, a
 CO2-emission period of 12 months.
