@@ -1,5 +1,2 @@
-*.* linguist-language=R
-
-
 *.rmd  linguist-detectable
 *.Rmd  linguist-detectable
